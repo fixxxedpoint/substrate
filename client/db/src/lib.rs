@@ -1541,9 +1541,6 @@ impl<Block: BlockT> Backend<Block> {
 					&mut finalization_displaced_leaves,
 					operation.commit_state,
 				)?;
-			} else {
-				// canonicalize blocks which are old enough, regardless of finality.
-				self.force_delayed_canonicalize(&mut transaction, hash, *header.number())?
 			}
 
 			if !existing_header {
