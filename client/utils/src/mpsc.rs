@@ -144,6 +144,9 @@ mod inner {
 
 		/// Proxy function to mpsc::UnboundedSender
 		pub fn unbounded_send(&self, msg: T) -> Result<(), TrySendError<T>> {
+			if self.queue_size.load(Ordering::Relaxed) >= 2 * self.queue_size_warning {
+				return Ok(())
+			}
 			self.inner.unbounded_send(msg).map(|s| {
 				UNBOUNDED_CHANNELS_COUNTER.with_label_values(&[self.name, "send"]).inc();
 

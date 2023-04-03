@@ -191,6 +191,10 @@ impl OutChannels {
 	/// Sends an event.
 	pub fn send(&mut self, event: Event) {
 		self.event_streams.retain_mut(|sender| {
+			if sender.queue_size.load(Ordering::Relaxed) >= 2 * sender.queue_size_warning {
+				return true
+			}
+
 			let queue_size = sender.queue_size.fetch_add(1, Ordering::Relaxed);
 			if queue_size == sender.queue_size_warning && !sender.warning_fired {
 				sender.warning_fired = true;
