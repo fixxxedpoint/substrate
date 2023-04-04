@@ -350,6 +350,9 @@ where
 				};
 
 				println!("yamux_maximum_buffer_size is {}", yamux_maximum_buffer_size);
+				println!("yamux_window_size is {:?}", params.network_config.yamux_window_size);
+				println!("setting yamux buffer sizes");
+				let yamux_maximum_buffer_size = 1024 * 1024;
 
 				transport::build_transport(
 					local_identity.clone(),
