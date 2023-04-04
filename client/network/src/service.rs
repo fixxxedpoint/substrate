@@ -349,6 +349,8 @@ where
 						.saturating_add(10)
 				};
 
+				println!("yamux_maximum_buffer_size is {}", yamux_maximum_buffer_size);
+
 				transport::build_transport(
 					local_identity.clone(),
 					config_mem,
