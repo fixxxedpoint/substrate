@@ -163,6 +163,8 @@ pub struct OutChannels {
 	last_failed: Option<Event>,
 	rand: rand::rngs::StdRng,
 	event_streams: Vec<Sender>,
+	last_ix: usize,
+	invalidated: bool,
 	/// The metrics we collect. A clone of this is sent to each [`Receiver`] associated with this
 	/// object.
 	metrics: Arc<Option<Metrics>>,
@@ -179,6 +181,8 @@ impl OutChannels {
 			metrics: Arc::new(metrics),
 			last_failed: None,
 			rand: rand::SeedableRng::from_entropy(),
+			last_ix: 0,
+			invalidated: false,
 		})
 	}
 
@@ -238,16 +242,24 @@ impl OutChannels {
 				metrics.event_in(&event, ev.name);
 			}
 		}
+		self.invalidated = true;
 	}
 
 	// TODO iterate through streams and ask if ready
 	pub fn poll_ready(&mut self, cx: &mut Context<'_>) -> bool {
-		for stream in self.event_streams.iter_mut() {
+		if !self.invalidated {
+			return true
+		}
+		for stream in self.event_streams[self.last_ix..].iter_mut() {
 			match stream.inner.poll_ready(cx) {
 				Poll::Ready(Ok(_)) => {},
 				_ => return false,
 			}
+			self.last_ix += 1;
 		}
+		self.last_ix = 0;
+		self.invalidated = false;
+
 		true
 	}
 }
