@@ -48,12 +48,14 @@ use std::{
 	task::{Context, Poll},
 };
 
+const BUFFER_SIZE: usize = 1024 * 1024;
+
 /// Creates a new channel that can be associated to a [`OutChannels`].
 ///
 /// The name is used in Prometheus reports, the queue size threshold is used
 /// to warn if there are too many unprocessed events in the channel.
 pub fn channel(name: &'static str, queue_size_warning: i64) -> (Sender, Receiver) {
-	let (tx, rx) = mpsc::unbounded();
+	let (tx, rx) = mpsc::channel(BUFFER_SIZE);
 	let metrics = Arc::new(Mutex::new(None));
 	let queue_size = Arc::new(AtomicI64::new(0));
 	let tx = Sender {
@@ -77,7 +79,7 @@ pub fn channel(name: &'static str, queue_size_warning: i64) -> (Sender, Receiver
 /// implement the `Clone` trait e.g. in Order to not complicate the logic keeping the metrics in
 /// sync on drop. If someone adds a `#[derive(Clone)]` below, it is **wrong**.
 pub struct Sender {
-	inner: mpsc::UnboundedSender<Event>,
+	inner: mpsc::Sender<Event>,
 	/// Name to identify the channel (e.g., in Prometheus and logs).
 	name: &'static str,
 	/// Number of events in the queue. Clone of [`Receiver::in_transit`].
@@ -113,7 +115,7 @@ impl Drop for Sender {
 
 /// Receiving side of a channel.
 pub struct Receiver {
-	inner: mpsc::UnboundedReceiver<Event>,
+	inner: mpsc::Receiver<Event>,
 	name: &'static str,
 	queue_size: Arc<AtomicI64>,
 	/// Initially contains `None`, and will be set to a value once the corresponding [`Sender`]
@@ -191,10 +193,6 @@ impl OutChannels {
 	/// Sends an event.
 	pub fn send(&mut self, event: Event) {
 		self.event_streams.retain_mut(|sender| {
-			if sender.queue_size.load(Ordering::Relaxed) >= 2 * sender.queue_size_warning {
-				return true
-			}
-
 			let queue_size = sender.queue_size.fetch_add(1, Ordering::Relaxed);
 			if queue_size == sender.queue_size_warning && !sender.warning_fired {
 				sender.warning_fired = true;
@@ -205,7 +203,12 @@ impl OutChannels {
 					sender.name, sender.queue_size_warning, sender.creation_backtrace,
 				);
 			}
-			sender.inner.unbounded_send(event.clone()).is_ok()
+			// if channel is full, we simply drop events
+			if let Err(err) = sender.inner.try_send(event.clone()) {
+				err.is_full()
+			} else {
+				true
+			}
 		});
 
 		if let Some(metrics) = &*self.metrics {
