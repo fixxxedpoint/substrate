@@ -36,6 +36,7 @@ use futures::{channel::mpsc, prelude::*, ready, stream::FusedStream};
 use log::error;
 use parking_lot::Mutex;
 use prometheus_endpoint::{register, CounterVec, GaugeVec, Opts, PrometheusError, Registry, U64};
+use rand::Rng;
 use sc_network_common::protocol::event::Event;
 use std::{
 	cell::RefCell,
@@ -161,6 +162,8 @@ impl Drop for Receiver {
 
 /// Collection of senders.
 pub struct OutChannels {
+	last_failed: Option<Event>,
+	rand: rand::rngs::StdRng,
 	event_streams: Vec<Sender>,
 	/// The metrics we collect. A clone of this is sent to each [`Receiver`] associated with this
 	/// object.
@@ -173,7 +176,12 @@ impl OutChannels {
 		let metrics =
 			if let Some(registry) = registry { Some(Metrics::register(registry)?) } else { None };
 
-		Ok(Self { event_streams: Vec::new(), metrics: Arc::new(metrics) })
+		Ok(Self {
+			event_streams: Vec::new(),
+			metrics: Arc::new(metrics),
+			last_failed: None,
+			rand: rand::SeedableRng::from_entropy(),
+		})
 	}
 
 	/// Adds a new [`Sender`] to the collection.
@@ -192,6 +200,16 @@ impl OutChannels {
 
 	/// Sends an event.
 	pub fn send(&mut self, event: Event) {
+		let event = if let Some(prev_event) = self.last_failed.take() {
+			let coin_toss: bool = self.rand.gen();
+			if coin_toss {
+				event
+			} else {
+				prev_event
+			}
+		} else {
+			event
+		};
 		self.event_streams.retain_mut(|sender| {
 			let queue_size = sender.queue_size.fetch_add(1, Ordering::Relaxed);
 			if queue_size == sender.queue_size_warning && !sender.warning_fired {
@@ -203,9 +221,15 @@ impl OutChannels {
 					sender.name, sender.queue_size_warning, sender.creation_backtrace,
 				);
 			}
+
 			// if channel is full, we simply drop events
 			if let Err(err) = sender.inner.try_send(event.clone()) {
-				err.is_full()
+				if err.is_full() {
+					self.last_failed = Some(err.into_inner());
+					true
+				} else {
+					false
+				}
 			} else {
 				true
 			}
