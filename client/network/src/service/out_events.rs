@@ -49,14 +49,12 @@ use std::{
 	task::{Context, Poll},
 };
 
-const BUFFER_SIZE: usize = 1024;
-
 /// Creates a new channel that can be associated to a [`OutChannels`].
 ///
 /// The name is used in Prometheus reports, the queue size threshold is used
 /// to warn if there are too many unprocessed events in the channel.
 pub fn channel(name: &'static str, queue_size_warning: i64) -> (Sender, Receiver) {
-	let (tx, rx) = mpsc::channel(BUFFER_SIZE);
+	let (tx, rx) = mpsc::channel(queue_size_warning.try_into().unwrap_or(1));
 	let metrics = Arc::new(Mutex::new(None));
 	let queue_size = Arc::new(AtomicI64::new(0));
 	let tx = Sender {
@@ -240,6 +238,17 @@ impl OutChannels {
 				metrics.event_in(&event, ev.name);
 			}
 		}
+	}
+
+	// TODO iterate through streams and ask if ready
+	pub fn poll_ready(&mut self, cx: &mut Context<'_>) -> bool {
+		for stream in self.event_streams.iter_mut() {
+			match stream.inner.poll_ready(cx) {
+				Poll::Ready(Ok(_)) => {},
+				_ => return false,
+			}
+		}
+		true
 	}
 }
 
