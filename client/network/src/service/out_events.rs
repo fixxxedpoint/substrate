@@ -48,7 +48,7 @@ use std::{
 	task::{Context, Poll},
 };
 
-const BUFFER_SIZE: usize = 1024 * 1024;
+const BUFFER_SIZE: usize = 1024;
 
 /// Creates a new channel that can be associated to a [`OutChannels`].
 ///
