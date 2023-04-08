@@ -163,11 +163,11 @@ pub struct OutChannels {
 	last_failed: Option<Event>,
 	rand: rand::rngs::StdRng,
 	event_streams: Vec<Sender>,
-	last_ix: usize,
-	invalidated: bool,
 	/// The metrics we collect. A clone of this is sent to each [`Receiver`] associated with this
 	/// object.
 	metrics: Arc<Option<Metrics>>,
+	last_ix: usize,
+	invalidated: bool,
 }
 
 impl OutChannels {
@@ -225,13 +225,8 @@ impl OutChannels {
 			}
 
 			// if channel is full, we simply drop events
-			if let Err(err) = sender.inner.try_send(event.clone()) {
-				if err.is_full() {
-					self.last_failed = Some(err.into_inner());
-					true
-				} else {
-					false
-				}
+			if sender.inner.start_send(event.clone()).is_err() {
+				false
 			} else {
 				true
 			}
@@ -242,10 +237,10 @@ impl OutChannels {
 				metrics.event_in(&event, ev.name);
 			}
 		}
+
 		self.invalidated = true;
 	}
 
-	// TODO iterate through streams and ask if ready
 	pub fn poll_ready(&mut self, cx: &mut Context<'_>) -> bool {
 		if !self.invalidated {
 			return true
