@@ -1297,10 +1297,6 @@ where
 	fn poll(mut self: Pin<&mut Self>, cx: &mut std::task::Context) -> Poll<Self::Output> {
 		let this = &mut *self;
 
-		if !this.event_streams.poll_ready(cx) {
-			return Poll::Pending
-		}
-
 		// At the time of writing of this comment, due to a high volume of messages, the network
 		// worker sometimes takes a long time to process the loop below. When that happens, the
 		// rest of the polling is frozen. In order to avoid negative side-effects caused by this
@@ -1423,6 +1419,10 @@ where
 			if num_iterations >= 1000 {
 				cx.waker().wake_by_ref();
 				break
+			}
+
+			if !this.event_streams.poll_ready(cx) {
+				return Poll::Pending
 			}
 
 			// Process the next action coming from the network.
