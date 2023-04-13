@@ -49,7 +49,7 @@ use libp2p::{
 		AddressScore, ConnectionError, ConnectionLimits, DialError, Executor, NetworkBehaviour,
 		PendingConnectionError, Swarm, SwarmBuilder, SwarmEvent,
 	},
-	Multiaddr, PeerId,
+	Multiaddr, PeerId, Transport,
 };
 use log::{debug, error, info, trace, warn};
 use metrics::{Histogram, HistogramVec, MetricSources, Metrics};
@@ -138,12 +138,34 @@ where
 	H: ExHashT,
 	Client: HeaderBackend<B> + 'static,
 {
+	pub fn new_with_transport<T>(
+		mut params: Params<B, Client>,
+		transport: impl Transport,
+	) -> Result<Self, Error>
+	where
+		T: Transport + Send + Unpin,
+		T::Output: futures::AsyncRead + futures::AsyncWrite + Send + Unpin,
+		T::Error: Send + Sync,
+		T::Dial: Send,
+		T::ListenerUpgrade: Send,
+	{
+		Self::new_with_optional_transport(params, Some(transport))
+	}
+
+	pub fn new(mut params: Params<B, Client>) -> Result<Self, Error> {
+		let transport: Option<dyn Transport> = None;
+		Self::new_with_optional_transport(params, transport)
+	}
+
 	/// Creates the network service.
 	///
 	/// Returns a `NetworkWorker` that implements `Future` and must be regularly polled in order
 	/// for the network processing to advance. From it, you can extract a `NetworkService` using
 	/// `worker.service()`. The `NetworkService` can be shared through the codebase.
-	pub fn new(mut params: Params<B, Client>) -> Result<Self, Error> {
+	pub fn new_with_optional_transport(
+		mut params: Params<B, Client>,
+		transport: Option<impl Transport>,
+	) -> Result<Self, Error> {
 		// Private and public keys configuration.
 		let local_identity = params.network_config.node_key.clone().into_keypair()?;
 		let local_public = local_identity.public();
@@ -354,12 +376,21 @@ where
 				println!("setting yamux buffer sizes");
 				let yamux_maximum_buffer_size = 1024 * 1024;
 
-				transport::build_transport(
-					local_identity.clone(),
-					config_mem,
-					params.network_config.yamux_window_size,
-					yamux_maximum_buffer_size,
-				)
+				if let Some(transport) = transport {
+					transport::build_transport_with(
+						transport,
+						local_identity.clone(),
+						params.network_config.yamux_window_size,
+						yamux_maximum_buffer_size,
+					)
+				} else {
+					transport::build_transport(
+						local_identity.clone(),
+						config_mem,
+						params.network_config.yamux_window_size,
+						yamux_maximum_buffer_size,
+					)
+				}
 			};
 
 			let behaviour = {
@@ -1274,6 +1305,7 @@ where
 	from_service: TracingUnboundedReceiver<ServiceToWorkerMsg<B>>,
 	/// Senders for events that happen on the network.
 	event_streams: out_events::OutChannels,
+	event_to_send: Option<Event>,
 	/// Prometheus network metrics.
 	metrics: Option<Metrics>,
 	/// The `PeerId`'s of all boot nodes.
@@ -1421,8 +1453,10 @@ where
 				break
 			}
 
-			if !this.event_streams.poll_ready(cx) {
-				return Poll::Pending
+			if let Some(event_to_send) = this.event_to_send {
+				if !this.event_streams.poll_ready(cx) {
+					return Poll::Pending
+				}
 			}
 
 			// Process the next action coming from the network.

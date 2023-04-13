@@ -53,35 +53,23 @@ pub fn build_transport(
 	yamux_maximum_buffer_size: usize,
 ) -> (Boxed<(PeerId, StreamMuxerBox)>, Arc<BandwidthSinks>) {
 	// Build the base layer of the transport.
-	let transport = if !memory_only {
-		// Main transport: DNS(TCP)
-		let tcp_config = tcp::Config::new().nodelay(true);
-		let tcp_trans = tcp::tokio::Transport::new(tcp_config.clone());
-		let dns_init = dns::TokioDnsConfig::system(tcp_trans);
+	let transport = build_default_transport(memory_only);
+	build_transport_with(transport, keypair, yamux_window_size, yamux_maximum_buffer_size)
+}
 
-		EitherTransport::Left(if let Ok(dns) = dns_init {
-			// WS + WSS transport
-			//
-			// Main transport can't be used for `/wss` addresses because WSS transport needs
-			// unresolved addresses (BUT WSS transport itself needs an instance of DNS transport to
-			// resolve and dial addresses).
-			let tcp_trans = tcp::tokio::Transport::new(tcp_config);
-			let dns_for_wss = dns::TokioDnsConfig::system(tcp_trans)
-				.expect("same system_conf & resolver to work");
-			EitherTransport::Left(websocket::WsConfig::new(dns_for_wss).or_transport(dns))
-		} else {
-			// In case DNS can't be constructed, fallback to TCP + WS (WSS won't work)
-			let tcp_trans = tcp::tokio::Transport::new(tcp_config.clone());
-			let desktop_trans = websocket::WsConfig::new(tcp_trans)
-				.or_transport(tcp::tokio::Transport::new(tcp_config));
-			EitherTransport::Right(desktop_trans)
-		})
-	} else {
-		EitherTransport::Right(OptionalTransport::some(
-			libp2p::core::transport::MemoryTransport::default(),
-		))
-	};
-
+pub fn build_transport_with<T>(
+	transport: T,
+	keypair: identity::Keypair,
+	yamux_window_size: Option<u32>,
+	yamux_maximum_buffer_size: usize,
+) -> (Boxed<(PeerId, StreamMuxerBox)>, Arc<BandwidthSinks>)
+where
+	T: Transport + Send + Unpin,
+	T::Output: futures::AsyncRead + futures::AsyncWrite + Send + Unpin,
+	T::Error: Send + Sync,
+	T::Dial: Send,
+	T::ListenerUpgrade: Send,
+{
 	let (transport, bandwidth) = bandwidth::BandwidthLogging::new(transport);
 
 	let authentication_config =
@@ -129,4 +117,42 @@ pub fn build_transport(
 		.boxed();
 
 	(transport, bandwidth)
+}
+
+pub fn build_default_transport(
+	memory_only: bool,
+) -> impl Transport<
+	Output = impl futures::AsyncRead + futures::AsyncWrite,
+	Error = impl Send,
+	Dial = impl Send,
+	ListenerUpgrade = impl Send,
+> {
+	if !memory_only {
+		// Main transport: DNS(TCP)
+		let tcp_config = tcp::Config::new().nodelay(true);
+		let tcp_trans = tcp::tokio::Transport::new(tcp_config.clone());
+		let dns_init = dns::TokioDnsConfig::system(tcp_trans);
+
+		EitherTransport::Left(if let Ok(dns) = dns_init {
+			// WS + WSS transport
+			//
+			// Main transport can't be used for `/wss` addresses because WSS transport needs
+			// unresolved addresses (BUT WSS transport itself needs an instance of DNS transport to
+			// resolve and dial addresses).
+			let tcp_trans = tcp::tokio::Transport::new(tcp_config);
+			let dns_for_wss = dns::TokioDnsConfig::system(tcp_trans)
+				.expect("same system_conf & resolver to work");
+			EitherTransport::Left(websocket::WsConfig::new(dns_for_wss).or_transport(dns))
+		} else {
+			// In case DNS can't be constructed, fallback to TCP + WS (WSS won't work)
+			let tcp_trans = tcp::tokio::Transport::new(tcp_config.clone());
+			let desktop_trans = websocket::WsConfig::new(tcp_trans)
+				.or_transport(tcp::tokio::Transport::new(tcp_config));
+			EitherTransport::Right(desktop_trans)
+		})
+	} else {
+		EitherTransport::Right(OptionalTransport::some(
+			libp2p::core::transport::MemoryTransport::default(),
+		))
+	}
 }

@@ -37,7 +37,7 @@ use crate::ChainSyncInterface;
 use core::{fmt, iter};
 use libp2p::{
 	identity::{ed25519, Keypair},
-	multiaddr, Multiaddr,
+	multiaddr, Multiaddr, Transport,
 };
 use prometheus_endpoint::Registry;
 use sc_network_common::{
@@ -95,6 +95,8 @@ where
 
 	/// Request response protocol configurations
 	pub request_response_protocol_configs: Vec<RequestResponseConfig>,
+
+	pub transport: Option<impl Transport>,
 }
 
 /// Sync operation mode.
