@@ -310,7 +310,7 @@ impl TestNetworkBuilder {
 			substrate_test_runtime_client::runtime::Block,
 			substrate_test_runtime_client::runtime::Hash,
 			substrate_test_runtime_client::TestClient,
-		>::new(config::Params {
+		>::new(config::Params::<_, _> {
 			block_announce_config,
 			role: config::Role::Full,
 			executor: Box::new(|f| {
@@ -329,6 +329,7 @@ impl TestNetworkBuilder {
 				light_client_request_protocol_config,
 			]
 			.to_vec(),
+			transport: None,
 		})
 		.unwrap();
 

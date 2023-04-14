@@ -49,7 +49,7 @@ use libp2p::{
 		AddressScore, ConnectionError, ConnectionLimits, DialError, Executor, NetworkBehaviour,
 		PendingConnectionError, Swarm, SwarmBuilder, SwarmEvent,
 	},
-	Multiaddr, PeerId, Transport,
+	Multiaddr, PeerId,
 };
 use log::{debug, error, info, trace, warn};
 use metrics::{Histogram, HistogramVec, MetricSources, Metrics};
@@ -138,34 +138,19 @@ where
 	H: ExHashT,
 	Client: HeaderBackend<B> + 'static,
 {
-	pub fn new_with_transport<T>(
-		mut params: Params<B, Client>,
-		transport: impl Transport,
-	) -> Result<Self, Error>
-	where
-		T: Transport + Send + Unpin,
-		T::Output: futures::AsyncRead + futures::AsyncWrite + Send + Unpin,
-		T::Error: Send + Sync,
-		T::Dial: Send,
-		T::ListenerUpgrade: Send,
-	{
-		Self::new_with_optional_transport(params, Some(transport))
-	}
-
-	pub fn new(mut params: Params<B, Client>) -> Result<Self, Error> {
-		let transport: Option<dyn Transport> = None;
-		Self::new_with_optional_transport(params, transport)
-	}
-
 	/// Creates the network service.
 	///
 	/// Returns a `NetworkWorker` that implements `Future` and must be regularly polled in order
 	/// for the network processing to advance. From it, you can extract a `NetworkService` using
 	/// `worker.service()`. The `NetworkService` can be shared through the codebase.
-	pub fn new_with_optional_transport(
-		mut params: Params<B, Client>,
-		transport: Option<impl Transport>,
-	) -> Result<Self, Error> {
+	pub fn new<T>(mut params: Params<B, Client, T>) -> Result<Self, Error>
+	where
+		T: crate::Transport + Send + Unpin + 'static,
+		T::Output: futures::AsyncRead + futures::AsyncWrite + Send + Unpin,
+		T::Error: Send + Sync,
+		T::Dial: Send,
+		T::ListenerUpgrade: Send,
+	{
 		// Private and public keys configuration.
 		let local_identity = params.network_config.node_key.clone().into_keypair()?;
 		let local_public = local_identity.public();
@@ -376,7 +361,7 @@ where
 				println!("setting yamux buffer sizes");
 				let yamux_maximum_buffer_size = 1024 * 1024;
 
-				if let Some(transport) = transport {
+				if let Some(transport) = params.transport {
 					transport::build_transport_with(
 						transport,
 						local_identity.clone(),
@@ -1305,7 +1290,6 @@ where
 	from_service: TracingUnboundedReceiver<ServiceToWorkerMsg<B>>,
 	/// Senders for events that happen on the network.
 	event_streams: out_events::OutChannels,
-	event_to_send: Option<Event>,
 	/// Prometheus network metrics.
 	metrics: Option<Metrics>,
 	/// The `PeerId`'s of all boot nodes.
@@ -1451,12 +1435,6 @@ where
 			if num_iterations >= 1000 {
 				cx.waker().wake_by_ref();
 				break
-			}
-
-			if let Some(event_to_send) = this.event_to_send {
-				if !this.event_streams.poll_ready(cx) {
-					return Poll::Pending
-				}
 			}
 
 			// Process the next action coming from the network.

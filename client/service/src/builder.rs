@@ -745,7 +745,14 @@ where
 }
 
 /// Parameters to pass into `build_network`.
-pub struct BuildNetworkParams<'a, TBl: BlockT, TExPool, TImpQu, TCl> {
+pub struct BuildNetworkParams<
+	'a,
+	TBl: BlockT,
+	TExPool,
+	TImpQu,
+	TCl,
+	Transport = sc_network::DummyTransport,
+> {
 	/// The service configuration.
 	pub config: &'a Configuration,
 	/// A shared client returned by `new_full_parts`.
@@ -761,10 +768,12 @@ pub struct BuildNetworkParams<'a, TBl: BlockT, TExPool, TImpQu, TCl> {
 		Option<Box<dyn FnOnce(Arc<TCl>) -> Box<dyn BlockAnnounceValidator<TBl> + Send> + Send>>,
 	/// An optional warp sync provider.
 	pub warp_sync: Option<Arc<dyn WarpSyncProvider<TBl>>>,
+	/// An optional Transport for the network layer.
+	pub transport: Option<Transport>,
 }
 /// Build the network service, the network status sinks and an RPC sender.
-pub fn build_network<TBl, TExPool, TImpQu, TCl>(
-	params: BuildNetworkParams<TBl, TExPool, TImpQu, TCl>,
+pub fn build_network<TBl, TExPool, TImpQu, TCl, Transport>(
+	params: BuildNetworkParams<TBl, TExPool, TImpQu, TCl, Transport>,
 ) -> Result<
 	(
 		Arc<NetworkService<TBl, <TBl as BlockT>::Hash>>,
@@ -787,6 +796,11 @@ where
 		+ 'static,
 	TExPool: MaintainedTransactionPool<Block = TBl, Hash = <TBl as BlockT>::Hash> + 'static,
 	TImpQu: ImportQueue<TBl> + 'static,
+	Transport: sc_network::Transport + Send + Unpin + 'static,
+	Transport::Output: sc_network::AsyncRead + sc_network::AsyncWrite + Send + Unpin,
+	Transport::Error: Send + Sync,
+	Transport::Dial: Send,
+	Transport::ListenerUpgrade: Send,
 {
 	let BuildNetworkParams {
 		config,
@@ -796,6 +810,7 @@ where
 		import_queue,
 		block_announce_validator_builder,
 		warp_sync,
+		transport,
 	} = params;
 
 	let mut request_response_protocol_configs = Vec::new();
@@ -929,6 +944,7 @@ where
 			])
 			.flatten()
 			.collect::<Vec<_>>(),
+		transport,
 	};
 
 	// crate transactions protocol and add it to the list of supported protocols of `network_params`

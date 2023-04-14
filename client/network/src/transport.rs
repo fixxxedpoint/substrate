@@ -16,6 +16,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use crate::Transport;
 use libp2p::{
 	bandwidth,
 	core::{
@@ -25,7 +26,7 @@ use libp2p::{
 		transport::{Boxed, OptionalTransport},
 		upgrade,
 	},
-	dns, identity, mplex, noise, tcp, websocket, PeerId, Transport,
+	dns, identity, mplex, noise, tcp, websocket, PeerId,
 };
 use std::{sync::Arc, time::Duration};
 
@@ -64,7 +65,7 @@ pub fn build_transport_with<T>(
 	yamux_maximum_buffer_size: usize,
 ) -> (Boxed<(PeerId, StreamMuxerBox)>, Arc<BandwidthSinks>)
 where
-	T: Transport + Send + Unpin,
+	T: Transport + Send + Unpin + 'static,
 	T::Output: futures::AsyncRead + futures::AsyncWrite + Send + Unpin,
 	T::Error: Send + Sync,
 	T::Dial: Send,
@@ -122,11 +123,13 @@ where
 pub fn build_default_transport(
 	memory_only: bool,
 ) -> impl Transport<
-	Output = impl futures::AsyncRead + futures::AsyncWrite,
-	Error = impl Send,
+	Output = impl crate::AsyncRead + crate::AsyncWrite,
+	Error = impl Send + Sync,
 	Dial = impl Send,
 	ListenerUpgrade = impl Send,
-> {
+> + Send
+       + Unpin
+       + 'static {
 	if !memory_only {
 		// Main transport: DNS(TCP)
 		let tcp_config = tcp::Config::new().nodelay(true);

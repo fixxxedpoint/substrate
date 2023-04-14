@@ -33,11 +33,11 @@ pub use sc_network_common::{
 
 pub use libp2p::{build_multiaddr, core::PublicKey, identity};
 
-use crate::ChainSyncInterface;
+use crate::{ChainSyncInterface, DummyTransport};
 use core::{fmt, iter};
 use libp2p::{
 	identity::{ed25519, Keypair},
-	multiaddr, Multiaddr, Transport,
+	multiaddr, Multiaddr,
 };
 use prometheus_endpoint::Registry;
 use sc_network_common::{
@@ -58,7 +58,7 @@ use std::{
 use zeroize::Zeroize;
 
 /// Network initialization parameters.
-pub struct Params<B, Client>
+pub struct Params<B, Client, T = DummyTransport>
 where
 	B: BlockT + 'static,
 {
@@ -96,7 +96,7 @@ where
 	/// Request response protocol configurations
 	pub request_response_protocol_configs: Vec<RequestResponseConfig>,
 
-	pub transport: Option<impl Transport>,
+	pub transport: Option<T>,
 }
 
 /// Sync operation mode.
