@@ -193,7 +193,7 @@ pub fn new_full(mut config: Configuration) -> Result<TaskManager, ServiceError> 
 	));
 
 	let (network, system_rpc_tx, tx_handler_controller, network_starter) =
-		sc_service::build_network(sc_service::BuildNetworkParams::<_, _, _, _, _, _> {
+		sc_service::build_network(sc_service::BuildNetworkParams::<_, _, _, _> {
 			config: &config,
 			client: client.clone(),
 			transaction_pool: transaction_pool.clone(),

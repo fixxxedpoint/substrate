@@ -16,7 +16,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::Transport;
+use crate::{AsyncRead, AsyncWrite, Transport};
 use libp2p::{
 	bandwidth,
 	core::{
@@ -66,7 +66,7 @@ pub fn build_transport_with<T>(
 ) -> (Boxed<(PeerId, StreamMuxerBox)>, Arc<BandwidthSinks>)
 where
 	T: Transport + Send + Unpin + 'static,
-	T::Output: futures::AsyncRead + futures::AsyncWrite + Send + Unpin,
+	T::Output: AsyncRead + AsyncWrite + Send + Unpin,
 	T::Error: Send + Sync,
 	T::Dial: Send,
 	T::ListenerUpgrade: Send,
@@ -158,4 +158,47 @@ pub fn build_default_transport(
 			libp2p::core::transport::MemoryTransport::default(),
 		))
 	}
+}
+
+pub fn build_basic_transport<T>(
+	trans: Option<T>,
+) -> impl Transport<
+	Output = impl crate::AsyncRead + crate::AsyncWrite,
+	Error = impl Send + Sync,
+	Dial = impl Send,
+	ListenerUpgrade = impl Send,
+> + Send
+       + Unpin
+       + 'static
+where
+	T: Transport + Send + Unpin + Clone + 'static,
+	T::Output: AsyncRead + AsyncWrite + Send + Unpin,
+	T::Error: Send + Sync,
+	T::Dial: Send,
+	T::ListenerUpgrade: Send,
+{
+	let trans = if let Some(trans) = trans {
+		trans
+	} else {
+		return EitherTransport::Right(OptionalTransport::some(
+			libp2p::core::transport::MemoryTransport::default(),
+		))
+	};
+	let dns_init = dns::TokioDnsConfig::system(trans.clone());
+	EitherTransport::Left(if let Ok(dns) = dns_init {
+		// WS + WSS transport
+		//
+		// Main transport can't be used for `/wss` addresses because WSS transport needs
+		// unresolved addresses (BUT WSS transport itself needs an instance of DNS transport to
+		// resolve and dial addresses).
+		let dns_for_wss =
+			dns::TokioDnsConfig::system(trans).expect("same system_conf & resolver to work");
+		EitherTransport::Left(websocket::WsConfig::new(dns_for_wss).or_transport(dns))
+	} else {
+		// In case DNS can't be constructed, fallback to TCP + WS (WSS won't work)
+		let tcp_config = tcp::Config::new().nodelay(true);
+		let desktop_trans =
+			websocket::WsConfig::new(trans).or_transport(tcp::tokio::Transport::new(tcp_config));
+		EitherTransport::Right(desktop_trans)
+	})
 }
