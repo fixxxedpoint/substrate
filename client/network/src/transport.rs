@@ -54,14 +54,7 @@ pub fn build_transport(
 	yamux_maximum_buffer_size: usize,
 ) -> (Boxed<(PeerId, StreamMuxerBox)>, Arc<BandwidthSinks>) {
 	// Build the base layer of the transport.
-	let transport = if !memory_only {
-		Some(|| {
-			let tcp_config = tcp::Config::new().nodelay(true);
-			tcp::tokio::Transport::new(tcp_config)
-		})
-	} else {
-		None
-	};
+	let transport = if !memory_only { Some(|| build_tcp_transport()) } else { None };
 	let transport = build_basic_transport(transport);
 	build_transport_with(transport, keypair, yamux_window_size, yamux_maximum_buffer_size)
 }
@@ -170,4 +163,9 @@ where
 			websocket::WsConfig::new(trans()).or_transport(tcp::tokio::Transport::new(tcp_config));
 		EitherTransport::Right(desktop_trans)
 	})
+}
+
+pub fn build_tcp_transport() -> tcp::tokio::Transport {
+	let tcp_config = tcp::Config::new().nodelay(true);
+	tcp::tokio::Transport::new(tcp_config)
 }

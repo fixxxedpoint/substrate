@@ -261,7 +261,9 @@ pub use libp2p::{
 	core::transport::{
 		ListenerId, MemoryTransport as DummyTransport, Transport, TransportError, TransportEvent,
 	},
-	multiaddr, Multiaddr, PeerId,
+	multiaddr,
+	tcp::tokio::Transport as TcpTransport,
+	Multiaddr, PeerId,
 };
 pub use protocol::PeerInfo;
 use sc_consensus::{JustificationSyncLink, Link};
