@@ -289,6 +289,7 @@ pub use service::{
 	NotificationSenderReady, OutboundFailure, PublicKey,
 };
 use sp_runtime::traits::{Block as BlockT, NumberFor};
+pub use transport::{build_basic_transport, build_tcp_transport};
 
 pub use sc_peerset::ReputationChange;
 
