@@ -258,7 +258,10 @@ pub mod network_state;
 pub use futures::{AsyncRead, AsyncWrite};
 #[doc(inline)]
 pub use libp2p::{
-	core::transport::MemoryTransport as DummyTransport, multiaddr, Multiaddr, PeerId, Transport,
+	core::transport::{
+		ListenerId, MemoryTransport as DummyTransport, Transport, TransportError, TransportEvent,
+	},
+	multiaddr, Multiaddr, PeerId,
 };
 pub use protocol::PeerInfo;
 use sc_consensus::{JustificationSyncLink, Link};
