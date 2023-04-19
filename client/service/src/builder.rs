@@ -745,14 +745,7 @@ where
 }
 
 /// Parameters to pass into `build_network`.
-pub struct BuildNetworkParams<
-	'a,
-	TBl: BlockT,
-	TExPool,
-	TImpQu,
-	TCl,
-	Transport = sc_network::DummyTransport,
-> {
+pub struct BuildNetworkParams<'a, TBl: BlockT, TExPool, TImpQu, TCl> {
 	/// The service configuration.
 	pub config: &'a Configuration,
 	/// A shared client returned by `new_full_parts`.
@@ -768,12 +761,51 @@ pub struct BuildNetworkParams<
 		Option<Box<dyn FnOnce(Arc<TCl>) -> Box<dyn BlockAnnounceValidator<TBl> + Send> + Send>>,
 	/// An optional warp sync provider.
 	pub warp_sync: Option<Arc<dyn WarpSyncProvider<TBl>>>,
-	/// An optional Transport for the network layer.
-	pub transport: Option<Transport>,
 }
 /// Build the network service, the network status sinks and an RPC sender.
-pub fn build_network<TBl, TExPool, TImpQu, TCl, Transport>(
-	params: BuildNetworkParams<TBl, TExPool, TImpQu, TCl, Transport>,
+pub fn build_network<TBl, TExPool, TImpQu, TCl>(
+	params: BuildNetworkParams<TBl, TExPool, TImpQu, TCl>,
+) -> Result<
+	(
+		Arc<NetworkService<TBl, <TBl as BlockT>::Hash>>,
+		TracingUnboundedSender<sc_rpc::system::Request<TBl>>,
+		sc_network_transactions::TransactionsHandlerController<<TBl as BlockT>::Hash>,
+		NetworkStarter,
+	),
+	Error,
+>
+where
+	TBl: BlockT,
+	TCl: ProvideRuntimeApi<TBl>
+		+ HeaderMetadata<TBl, Error = sp_blockchain::Error>
+		+ Chain<TBl>
+		+ BlockBackend<TBl>
+		+ BlockIdTo<TBl, Error = sp_blockchain::Error>
+		+ ProofProvider<TBl>
+		+ HeaderBackend<TBl>
+		+ BlockchainEvents<TBl>
+		+ 'static,
+	TExPool: MaintainedTransactionPool<Block = TBl, Hash = <TBl as BlockT>::Hash> + 'static,
+	TImpQu: ImportQueue<TBl> + 'static,
+{
+	let transport_builder = |transport| transport;
+	// let params = BuildNetworkParams { transport: Some(transport_builder) };
+	let params = BuildNetworkParams {
+		config: params.config,
+		client: params.client,
+		transaction_pool: params.transaction_pool,
+		spawn_handle: params.spawn_handle,
+		import_queue: params.import_queue,
+		block_announce_validator_builder: params.block_announce_validator_builder,
+		warp_sync: params.warp_sync,
+	};
+	build_network_with_transport(params, transport_builder)
+}
+
+/// Build the network service, the network status sinks and an RPC sender.
+pub fn build_network_with_transport<TBl, TExPool, TImpQu, TCl, Transport, TransportBuilder>(
+	params: BuildNetworkParams<TBl, TExPool, TImpQu, TCl>,
+	transport: TransportBuilder,
 ) -> Result<
 	(
 		Arc<NetworkService<TBl, <TBl as BlockT>::Hash>>,
@@ -801,6 +833,7 @@ where
 	Transport::Error: Send + Sync,
 	Transport::Dial: Send,
 	Transport::ListenerUpgrade: Send,
+	TransportBuilder: Fn(sc_network::TcpTransport) -> Transport + 'static,
 {
 	let BuildNetworkParams {
 		config,
@@ -810,7 +843,6 @@ where
 		import_queue,
 		block_announce_validator_builder,
 		warp_sync,
-		transport,
 	} = params;
 
 	let mut request_response_protocol_configs = Vec::new();

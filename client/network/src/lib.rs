@@ -258,9 +258,7 @@ pub mod network_state;
 pub use futures::{AsyncRead, AsyncWrite};
 #[doc(inline)]
 pub use libp2p::{
-	core::transport::{
-		ListenerId, MemoryTransport as DummyTransport, Transport, TransportError, TransportEvent,
-	},
+	core::transport::{ListenerId, Transport, TransportError, TransportEvent},
 	multiaddr,
 	tcp::tokio::Transport as TcpTransport,
 	Multiaddr, PeerId,
@@ -289,7 +287,6 @@ pub use service::{
 	NotificationSenderReady, OutboundFailure, PublicKey,
 };
 use sp_runtime::traits::{Block as BlockT, NumberFor};
-pub use transport::{build_basic_transport, build_tcp_transport};
 
 pub use sc_peerset::ReputationChange;
 

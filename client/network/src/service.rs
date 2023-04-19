@@ -143,13 +143,14 @@ where
 	/// Returns a `NetworkWorker` that implements `Future` and must be regularly polled in order
 	/// for the network processing to advance. From it, you can extract a `NetworkService` using
 	/// `worker.service()`. The `NetworkService` can be shared through the codebase.
-	pub fn new<T>(mut params: Params<B, Client, T>) -> Result<Self, Error>
+	pub fn new<T, TBuild>(mut params: Params<B, Client, TBuild>) -> Result<Self, Error>
 	where
 		T: crate::Transport + Send + Unpin + 'static,
 		T::Output: futures::AsyncRead + futures::AsyncWrite + Send + Unpin,
 		T::Error: Send + Sync,
 		T::Dial: Send,
 		T::ListenerUpgrade: Send,
+		TBuild: Fn(libp2p::tcp::tokio::Transport) -> T + 'static,
 	{
 		// Private and public keys configuration.
 		let local_identity = params.network_config.node_key.clone().into_keypair()?;
@@ -361,17 +362,17 @@ where
 				println!("setting yamux buffer sizes");
 				let yamux_maximum_buffer_size = 1024 * 1024;
 
-				if let Some(transport) = params.transport {
-					transport::build_transport_with(
-						transport,
+				if params.transport.is_none() {
+					transport::build_transport(
 						local_identity.clone(),
+						config_mem,
 						params.network_config.yamux_window_size,
 						yamux_maximum_buffer_size,
 					)
 				} else {
-					transport::build_transport(
+					transport::build_transport_with(
+						params.transport,
 						local_identity.clone(),
-						config_mem,
 						params.network_config.yamux_window_size,
 						yamux_maximum_buffer_size,
 					)

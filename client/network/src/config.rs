@@ -33,7 +33,7 @@ pub use sc_network_common::{
 
 pub use libp2p::{build_multiaddr, core::PublicKey, identity};
 
-use crate::{ChainSyncInterface, DummyTransport};
+use crate::ChainSyncInterface;
 use core::{fmt, iter};
 use libp2p::{
 	identity::{ed25519, Keypair},
@@ -58,7 +58,7 @@ use std::{
 use zeroize::Zeroize;
 
 /// Network initialization parameters.
-pub struct Params<B, Client, T = DummyTransport>
+pub struct Params<B, Client, T = ()>
 where
 	B: BlockT + 'static,
 {

@@ -28,7 +28,7 @@ use libp2p::{
 	},
 	dns, identity, mplex, noise, tcp, websocket, PeerId,
 };
-use std::{sync::Arc, time::Duration};
+use std::{convert::identity, sync::Arc, time::Duration};
 
 pub use self::bandwidth::BandwidthSinks;
 
@@ -53,7 +53,7 @@ pub fn build_transport(
 	yamux_window_size: Option<u32>,
 	yamux_maximum_buffer_size: usize,
 ) -> (Boxed<(PeerId, StreamMuxerBox)>, Arc<BandwidthSinks>) {
-	let transport = if !memory_only { Some(|| build_tcp_transport()) } else { None };
+	let transport = if !memory_only { Some(identity) } else { None };
 	build_transport_with(transport, keypair, yamux_window_size, yamux_maximum_buffer_size)
 }
 
@@ -69,7 +69,7 @@ where
 	T::Error: Send + Sync,
 	T::Dial: Send,
 	T::ListenerUpgrade: Send,
-	TBuild: Fn() -> T,
+	TBuild: Fn(tcp::tokio::Transport) -> T + 'static,
 {
 	let transport = build_basic_transport(transport);
 	let (transport, bandwidth) = bandwidth::BandwidthLogging::new(transport);
@@ -137,7 +137,7 @@ where
 	T::Error: Send + Sync,
 	T::Dial: Send,
 	T::ListenerUpgrade: Send,
-	TBuild: FnMut() -> T,
+	TBuild: FnMut(tcp::tokio::Transport) -> T,
 {
 	let mut trans = if let Some(trans) = wire_transport {
 		trans
@@ -146,19 +146,20 @@ where
 			libp2p::core::transport::MemoryTransport::default(),
 		))
 	};
-	let dns_init = dns::TokioDnsConfig::system(trans());
+	let dns_init = dns::TokioDnsConfig::system(trans(build_tcp_transport()));
 	EitherTransport::Left(if let Ok(dns) = dns_init {
 		// WS + WSS transport
 		//
 		// Main transport can't be used for `/wss` addresses because WSS transport needs
 		// unresolved addresses (BUT WSS transport itself needs an instance of DNS transport to
 		// resolve and dial addresses).
-		let dns_for_wss =
-			dns::TokioDnsConfig::system(trans()).expect("same system_conf & resolver to work");
+		let dns_for_wss = dns::TokioDnsConfig::system(trans(build_tcp_transport()))
+			.expect("same system_conf & resolver to work");
 		EitherTransport::Left(websocket::WsConfig::new(dns_for_wss).or_transport(dns))
 	} else {
 		// In case DNS can't be constructed, fallback to `given transport` + WS (WSS won't work)
-		let desktop_trans = websocket::WsConfig::new(trans()).or_transport(trans());
+		let desktop_trans = websocket::WsConfig::new(trans(build_tcp_transport()))
+			.or_transport(trans(build_tcp_transport()));
 		EitherTransport::Right(desktop_trans)
 	})
 }
