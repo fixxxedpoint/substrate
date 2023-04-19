@@ -78,6 +78,7 @@ use sp_runtime::traits::{Block as BlockT, NumberFor, Zero};
 use std::{
 	cmp,
 	collections::{HashMap, HashSet},
+	convert::identity,
 	fs, iter,
 	marker::PhantomData,
 	num::NonZeroUsize,
@@ -143,7 +144,19 @@ where
 	/// Returns a `NetworkWorker` that implements `Future` and must be regularly polled in order
 	/// for the network processing to advance. From it, you can extract a `NetworkService` using
 	/// `worker.service()`. The `NetworkService` can be shared through the codebase.
-	pub fn new<T, TBuild>(mut params: Params<B, Client, TBuild>) -> Result<Self, Error>
+	pub fn new(params: Params<B, Client>) -> Result<Self, Error> {
+		Self::new_with_transport(params, identity)
+	}
+
+	/// Creates the network service using given Transport builder.
+	///
+	/// Returns a `NetworkWorker` that implements `Future` and must be regularly polled in order
+	/// for the network processing to advance. From it, you can extract a `NetworkService` using
+	/// `worker.service()`. The `NetworkService` can be shared through the codebase.
+	pub fn new_with_transport<T, TBuild>(
+		mut params: Params<B, Client>,
+		transport: TBuild,
+	) -> Result<Self, Error>
 	where
 		T: crate::Transport + Send + Unpin + 'static,
 		T::Output: futures::AsyncRead + futures::AsyncWrite + Send + Unpin,
@@ -362,7 +375,7 @@ where
 				println!("setting yamux buffer sizes");
 				let yamux_maximum_buffer_size = 1024 * 1024;
 
-				if params.transport.is_none() {
+				if config_mem {
 					transport::build_transport(
 						local_identity.clone(),
 						config_mem,
@@ -371,7 +384,7 @@ where
 					)
 				} else {
 					transport::build_transport_with(
-						params.transport,
+						Some(transport),
 						local_identity.clone(),
 						params.network_config.yamux_window_size,
 						yamux_maximum_buffer_size,

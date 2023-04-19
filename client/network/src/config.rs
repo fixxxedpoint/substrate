@@ -58,7 +58,7 @@ use std::{
 use zeroize::Zeroize;
 
 /// Network initialization parameters.
-pub struct Params<B, Client, T = ()>
+pub struct Params<B, Client>
 where
 	B: BlockT + 'static,
 {
@@ -95,8 +95,6 @@ where
 
 	/// Request response protocol configurations
 	pub request_response_protocol_configs: Vec<RequestResponseConfig>,
-
-	pub transport: Option<T>,
 }
 
 /// Sync operation mode.

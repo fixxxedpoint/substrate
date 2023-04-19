@@ -329,7 +329,6 @@ impl TestNetworkBuilder {
 				light_client_request_protocol_config,
 			]
 			.to_vec(),
-			transport: None,
 		})
 		.unwrap();
 

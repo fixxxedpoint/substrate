@@ -976,7 +976,6 @@ where
 			])
 			.flatten()
 			.collect::<Vec<_>>(),
-		transport,
 	};
 
 	// crate transactions protocol and add it to the list of supported protocols of `network_params`
@@ -995,7 +994,7 @@ where
 		.insert(0, transactions_handler_proto.set_config());
 
 	let has_bootnodes = !network_params.network_config.boot_nodes.is_empty();
-	let network_mut = sc_network::NetworkWorker::new(network_params)?;
+	let network_mut = sc_network::NetworkWorker::new_with_transport(network_params, transport)?;
 	let network = network_mut.service().clone();
 
 	let (tx_handler, tx_handler_controller) = transactions_handler_proto.build(

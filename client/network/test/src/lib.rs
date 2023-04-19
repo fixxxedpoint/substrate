@@ -933,7 +933,6 @@ where
 				warp_protocol_config,
 			]
 			.to_vec(),
-			transport: None,
 		})
 		.unwrap();
 
