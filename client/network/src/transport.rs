@@ -53,14 +53,12 @@ pub fn build_transport(
 	yamux_window_size: Option<u32>,
 	yamux_maximum_buffer_size: usize,
 ) -> (Boxed<(PeerId, StreamMuxerBox)>, Arc<BandwidthSinks>) {
-	// Build the base layer of the transport.
 	let transport = if !memory_only { Some(|| build_tcp_transport()) } else { None };
-	let transport = build_basic_transport(transport);
 	build_transport_with(transport, keypair, yamux_window_size, yamux_maximum_buffer_size)
 }
 
-pub fn build_transport_with<T>(
-	transport: T,
+pub fn build_transport_with<T, TBuild>(
+	transport: Option<TBuild>,
 	keypair: identity::Keypair,
 	yamux_window_size: Option<u32>,
 	yamux_maximum_buffer_size: usize,
@@ -71,7 +69,9 @@ where
 	T::Error: Send + Sync,
 	T::Dial: Send,
 	T::ListenerUpgrade: Send,
+	TBuild: Fn() -> T,
 {
+	let transport = build_basic_transport(transport);
 	let (transport, bandwidth) = bandwidth::BandwidthLogging::new(transport);
 
 	let authentication_config =
@@ -121,8 +121,8 @@ where
 	(transport, bandwidth)
 }
 
-pub fn build_basic_transport<T, TBuild>(
-	trans: Option<TBuild>,
+fn build_basic_transport<T, TBuild>(
+	wire_transport: Option<TBuild>,
 ) -> impl Transport<
 	Output = impl crate::AsyncRead + crate::AsyncWrite,
 	Error = impl Send + Sync,
@@ -139,7 +139,7 @@ where
 	T::ListenerUpgrade: Send,
 	TBuild: FnMut() -> T,
 {
-	let mut trans = if let Some(trans) = trans {
+	let mut trans = if let Some(trans) = wire_transport {
 		trans
 	} else {
 		return EitherTransport::Right(OptionalTransport::some(
@@ -157,15 +157,13 @@ where
 			dns::TokioDnsConfig::system(trans()).expect("same system_conf & resolver to work");
 		EitherTransport::Left(websocket::WsConfig::new(dns_for_wss).or_transport(dns))
 	} else {
-		// In case DNS can't be constructed, fallback to TCP + WS (WSS won't work)
-		let tcp_config = tcp::Config::new().nodelay(true);
-		let desktop_trans =
-			websocket::WsConfig::new(trans()).or_transport(tcp::tokio::Transport::new(tcp_config));
+		// In case DNS can't be constructed, fallback to `given transport` + WS (WSS won't work)
+		let desktop_trans = websocket::WsConfig::new(trans()).or_transport(trans());
 		EitherTransport::Right(desktop_trans)
 	})
 }
 
-pub fn build_tcp_transport() -> tcp::tokio::Transport {
+fn build_tcp_transport() -> tcp::tokio::Transport {
 	let tcp_config = tcp::Config::new().nodelay(true);
 	tcp::tokio::Transport::new(tcp_config)
 }
