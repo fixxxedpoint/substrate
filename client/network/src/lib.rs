@@ -255,8 +255,14 @@ mod transport;
 pub mod config;
 pub mod network_state;
 
+pub use futures::{AsyncRead, AsyncWrite};
 #[doc(inline)]
-pub use libp2p::{multiaddr, Multiaddr, PeerId};
+pub use libp2p::{
+	core::transport::{ListenerId, Transport, TransportError, TransportEvent},
+	multiaddr,
+	tcp::tokio::Transport as TcpTransport,
+	Multiaddr, PeerId,
+};
 pub use protocol::PeerInfo;
 use sc_consensus::{JustificationSyncLink, Link};
 pub use sc_network_common::{
