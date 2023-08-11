@@ -85,6 +85,8 @@ use sp_runtime::{
 };
 
 use std::{
+	cell::RefCell,
+	cmp::max,
 	collections::{hash_map::Entry, HashMap, HashSet},
 	iter,
 	ops::Range,
@@ -349,6 +351,8 @@ pub struct ChainSync<B: BlockT, Client> {
 	import_queue: Box<dyn ImportQueueService<B>>,
 	/// Metrics.
 	metrics: Option<SyncingMetrics>,
+	/// Allows to track changes in best-block after reorgs.
+	last_best_block: RefCell<<<B as BlockT>::Header as HeaderT>::Number>,
 }
 
 /// All the data we have about a Peer that we are trying to sync with
@@ -496,7 +500,15 @@ where
 			// more than `MAJOR_SYNC_BLOCKS` behind the best block or as importing
 			// if the same can be said about queued blocks.
 			let best_block = self.client.info().best_number;
-			if target > best_block && target - best_block > MAJOR_SYNC_BLOCKS.into() {
+			let mut last_best_block = self.last_best_block.borrow_mut();
+			*last_best_block = max(best_block, *last_best_block);
+
+			let something_wrong_after_reorgs = best_block < *last_best_block;
+
+			if !something_wrong_after_reorgs &&
+				target > best_block &&
+				target - best_block > MAJOR_SYNC_BLOCKS.into()
+			{
 				// If target is not queued, we're downloading, otherwise importing.
 				if target > self.best_queued_number {
 					SyncState::Downloading { target }
@@ -1427,7 +1439,7 @@ where
 				.flatten()
 				.expect("Genesis block exists; qed"),
 		);
-
+		let last_best_block = RefCell::new(client.info().best_number);
 		let mut sync = Self {
 			client,
 			peers: HashMap::new(),
@@ -1471,6 +1483,7 @@ where
 			} else {
 				None
 			},
+			last_best_block,
 		};
 
 		sync.reset_sync_start_point()?;
